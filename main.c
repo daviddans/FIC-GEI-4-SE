@@ -67,8 +67,8 @@ void led_red_on(void)
 }
 
 //Door status
-volatile int door1 = OPEN;
-volatile int door2 = OPEN;
+volatile int toggle1 = 0;
+volatile int toggle2 = 0;
 
 
 void toggle_door(int* door){
@@ -90,30 +90,35 @@ void irq_init(void)
     PORTC->ISFR = 0xFFFFFFFF;
 
     /* 4. Enable PORTC Interrupts in NVIC */
-    NVIC_ClearPendingIRQ(PORTC_PORTD_IRQn); // Note: On KL46Z, C and D often share an IRQ
+    NVIC_ClearPendingIRQ(PORTC_PORTD_IRQn);
+    NVIC_SetPriority(PORTC_PORTD_IRQn, 0);
     NVIC_EnableIRQ(PORTC_PORTD_IRQn);
 
     __enable_irq();
 }
 
-/* 5. Rename your handler to match the Port C/D vector */
-void PORTC_PORTD_IRQHandler(void)
+void PORTDIntHandler(void)
 {
     uint32_t flags = PORTC->ISFR;
-    
-    // Clear flags immediately
-    PORTC->ISFR = 0xFFFFFFFF; 
+  
 
-    if (flags & (1U << 3)) {   // SW1
-        toggle_door(&door1);
+    // Procesar las interrupciones de los botones
+    if (flags & (1U << 3)) {   // SW1 (PTC3)
+        toggle1 = 1;
+        PORTC->ISFR = (1U << 3);
     }
-    if (flags & (1U << 12)) {  // SW3
-        toggle_door(&door2);
+    if (flags & (1U << 12)) {  // SW3 (PTC12)
+        toggle2 = 1;
+        PORTC->ISFR = (1U << 12);
     }
+
+    
 }
 
 int main(void)
 {
+  int door1 = OPEN;
+  int door2 = OPEN;
   //init
   disable_watchdog();
   irq_init();
@@ -131,6 +136,14 @@ int main(void)
         //Unsecure status
         led_green_on();
         led_red_off();
+      }
+      if (toggle1) {
+        toggle_door(&door1);
+        toggle1 = 0;
+      }
+      if (toggle2) {  
+        toggle_door(&door2);
+        toggle2 = 0;
       }
   }
   return 0;
