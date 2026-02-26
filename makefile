@@ -10,6 +10,8 @@ includes:= ./includes
 openconf:= ./openocd.cfg
 
 #toolchain completo
+all: cleanall build flash	
+
 build: main.elf
 
 #Regra de linkado
