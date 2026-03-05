@@ -1,3 +1,4 @@
+#include "includes/MKL46Z4.h"
 //*****************************************************************************
 // Declaration of the default fault handlers
 //*****************************************************************************
@@ -222,7 +223,7 @@ void Default_ResetHandler(void)
 //*****************************************************************************
 static void DefaultIntHandler(void)
 {
-  SIM->COPC = 0x00 //Disable watchDog
+  SIM->COPC = 0x00; //Disable watchDog
   for(;;);
 }
 
