@@ -146,6 +146,8 @@ void (* const g_pfnVectors[])(void) =
 //*****************************************************************************
 void Default_ResetHandler(void)
 {
+  SIM->COPC = 0x00u; //Disable watchdog
+  
   unsigned long *pulSrc, *pulDest;
 
   /* copy the data segment initializers from flash to SRAM */
@@ -223,7 +225,6 @@ void Default_ResetHandler(void)
 //*****************************************************************************
 static void DefaultIntHandler(void)
 {
-  SIM->COPC = 0x00; //Disable watchDog
   for(;;);
 }
 
