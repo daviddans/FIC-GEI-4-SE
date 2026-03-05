@@ -222,6 +222,7 @@ void Default_ResetHandler(void)
 //*****************************************************************************
 static void DefaultIntHandler(void)
 {
+  SIM->COPC = 0x00 //Disable watchDog
   for(;;);
 }
 
