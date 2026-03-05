@@ -30,3 +30,8 @@
 *.hex
 *.bin
 *.srec
+
+#sdj
+
+frdm-kl46z-sdk/
+
