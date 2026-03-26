@@ -1,0 +1,112 @@
+Explicación das optimizacións en ensamblador para reverse_int()
+================================================================
+
+1. Análise da versión C de referencia
+--------------------------------------
+
+A función C orixinal fai, por cada un dos 32 bits:
+
+    out = out << 1;
+    out |= in & 1;
+    in = in >> 1;
+
+Compilada con -Ofast, o compilador xera un bucle de 7 instrucións por
+iteración:
+
+    movs  r1, r4        ; r1 = 1 (máscara)
+    lsls  r0, r0, #1    ; out <<= 1
+    ands  r1, r3        ; r1 = in & 1
+    subs  r2, #1        ; contador--
+    orrs  r0, r1        ; out |= (in & 1)
+    lsrs  r3, r3, #1    ; in >>= 1
+    bne   loop
+
+O compilador traduce fielmente as operacións C: desprazamento, máscara
+con AND, combinación con OR. Non pode optimizar máis porque non "coñece"
+o truco do carry flag que describimos a continuación.
+
+
+2. A optimización: o truco LSRS + ADCS co carry flag
+------------------------------------------------------
+
+No Cortex-M0+, a instrución LSRS (Logical Shift Right, Set flags) non
+só despraza os bits á dereita, senón que ademais coloca o bit que "cae"
+polo lado dereito (o LSB orixinal) no carry flag do rexistro de estado.
+
+Pola súa banda, ADCS Rd, Rd calcula:
+
+    Rd = Rd + Rd + C = (Rd << 1) | carry
+
+É dicir, despraza Rd á esquerda un bit e inserta o carry no bit 0.
+
+Combinando ambas:
+
+    lsrs  in, in, #1      ; in >>= 1, e o LSB orixinal vai ao carry
+    adcs  out, out         ; out = (out << 1) | carry
+
+Con só 2 instrucións facemos o traballo que ao compilador lle custa 5
+(movs + lsls + ands + orrs + lsrs). O carry flag actúa como "ponte"
+entre a entrada e a saída, sen necesidade de rexistros auxiliares nin
+operacións de máscara.
+
+
+3. Por que non usar RBIT?
+--------------------------
+
+A instrución RBIT (Reverse Bits) invertiría os 32 bits nunha soa
+instrución. Pero RBIT só existe en ARMv7-M (Cortex-M3/M4/M7). O noso
+Cortex-M0+ usa ARMv6-M, que só soporta o subconxunto Thumb e non inclúe
+RBIT. Isto confírmase na cabeceira CMSIS cmsis_gcc.h, que implementa
+__RBIT() como un bucle C cando __ARM_ARCH_7M__ non está definido.
+
+
+4. Implementación inline vs ensamblador puro
+----------------------------------------------
+
+ASM inline (en main.c):
+  - A función escríbese en C pero o corpo do bucle é ensamblador.
+  - Úsase a extensión GCC __asm volatile con operandos nomeados.
+  - Restrición "+l": rexistros baixos r0-r7 (obrigatorio en Thumb/M0+).
+  - Clobber "cc": indicamos que modificamos os flags.
+  - Necesita .syntax unified / .syntax divided ao redor porque GCC
+    emite código en sintaxe "divided" por defecto para Thumb.
+
+ASM puro (reverse_asm.s):
+  - Función completa nun arquivo .s separado.
+  - Segue a convención de chamada AAPCS: entrada en r0, saída en r0.
+  - Usa só r0, r1 e r2 (todos caller-saved), polo que non precisa
+    PUSH/POP. Isto aforra ciclos fronte ao prólogo/epílogo que o
+    compilador engade na versión inline.
+  - A directiva .thumb_func garante que o linker marca o enderezo da
+    función co bit de Thumb activo.
+
+Ambas versións usan o mesmo algoritmo (LSRS + ADCS en bucle de 32
+iteracións), polo que o rendemento é moi similar. A versión en .s ten
+un prólogo/epílogo lixeiramente máis limpo.
+
+
+5. Ciclos de execución medidos
+-------------------------------
+
+Os ciclos medíronse co temporizador SysTick configurado como contador
+libre descendente usando o reloxo do procesador (48 MHz).
+
+    Entrada de proba: 0x12345678
+    Saída esperada:   0x1E6A2C48
+
+    | Implementación        | Ciclos | Speedup vs C |
+    |-----------------------|--------|--------------|
+    | C referencia (-Ofast) | ???    | 1.00x        |
+    | ASM inline            | ???    | ?.??x        |
+    | ASM puro (.s)         | ???    | ?.??x        |
+
+(Os valores exactos completaranse tras flashear e medir na placa.)
+
+
+6. Conclusión
+--------------
+
+A mellora principal vén de aproveitar o carry flag do procesador, algo
+que o compilador non fai nin con -Ofast. Esta é unha situación típica
+onde o coñecemento da arquitectura permite optimizacións que van máis
+alá do que o compilador pode inferir automaticamente.
