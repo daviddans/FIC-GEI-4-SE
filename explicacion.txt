@@ -17,8 +17,10 @@ Con 32 iteracions e o custo das ramas: 312 ciclos medidos.
 2. A optimizacion: carry flag (LSRS + ADCS)
 ---------------------------------------------
 
-No ARM Cortex-M0+, a instrución LSRS non só despraza bits: tamén garda
-o bit que "sae" polo lado dereito nun rexistro especial chamado carry flag.
+No ARM Cortex-M0+, a instrución LSRS (Logical Shift Right, Set flags)
+non só despraza bits: tamén garda o bit que "sae" polo lado dereito nun
+rexistro especial do procesador chamado carry flag. Este comportamento
+está definido na especificación oficial ARMv6-M [1].
 
 Logo, ADCS Rd, Rd calcula:  Rd = Rd + Rd + carry = (Rd << 1) | carry
 
@@ -27,16 +29,27 @@ Combinando as dúas instrucions:
     lsrs  in, in, #1      <- in >>= 1, o LSB orixinal vai ao carry
     adcs  out, out         <- out = (out << 1) | carry
 
-Con 2 instrucions facemos o mesmo que con 5. O bucle queda en 4
-instrucions en vez de 7 -> 175 ciclos medidos -> speedup de 1.78x.
+Con 2 instrucions facemos o mesmo que con 5. Este uso do carry flag
+para manipular bits sen ramas nin máscaras é unha técnica documentada
+por Jens Bauer no blog oficial de ARM [3].
+
+O bucle queda en 4 instrucions en vez de 7 -> 175 ciclos -> speedup 1.78x.
 
 
 3. Por que non usamos RBIT?
 ----------------------------
 
-Existe una instrución RBIT que inverte os 32 bits nunha soa operación,
-pero só está dispoñible no Cortex-M3/M4/M7 (ARMv7-M). O noso
-Cortex-M0+ usa ARMv6-M, un subconxunto máis limitado que non a inclúe.
+Existe a instrución RBIT que inverte os 32 bits nunha soa operación,
+pero só está dispoñible en ARMv7-M (Cortex-M3/M4/M7). O noso
+Cortex-M0+ usa ARMv6-M, un subconxunto máis limitado.
+
+A guía do Cortex-M0+ [2] lista todas as instrucions soportadas e RBIT
+non aparece. Os propios mantedores de CMSIS de ARM confirman isto
+explicitamente: "RBIT not available" en M0, M0+ e M23 [5].
+
+Joseph Yiu, enxeñeiro de ARM, explica as diferenzas entre ARMv6-M e
+ARMv7-M no seu libro de referencia [4], incluíndo as instrucions de
+manipulación de bits que ARMv7-M engadiu respecto a ARMv6-M.
 
 
 4. Implementacion inline vs arquivo .s
@@ -47,7 +60,7 @@ Inline ASM (en main.c):
   O compilador integrao co resto do código C.
 
 ASM puro (reverse_asm.s):
-  Función completa escrita en ensamblador nun arquivo separado.
+  Función completa en ensamblador nun arquivo separado.
   Segue a convención AAPCS: argumento en r0, resultado en r0.
   Non precisa gardar rexistros (usa só r0-r2, que o chamador xa asume
   que poden cambiar), polo que non hai instrucions push/pop.
@@ -74,4 +87,32 @@ Ambas dan o mesmo resultado porque o algoritmo é idéntico.
 
 A mellora vén de aproveitar o carry flag, algo que o compilador non fai
 nin con -Ofast. É un exemplo de optimización que require coñecer a
-arquitectura do procesador.
+arquitectura do procesador, como documenta Bauer en [3].
+
+
+Referencias
+-----------
+
+[1] ARM Limited. ARMv6-M Architecture Reference Manual (ARM DDI 0419E).
+    https://developer.arm.com/documentation/ddi0419/latest/
+    Especificación formal das instrucions LSRS e ADCS e o carry flag.
+
+[2] ARM Limited. Cortex-M0+ Devices Generic User Guide (ARM DUI 0662).
+    https://developer.arm.com/documentation/dui0662/latest/
+    Lista de instrucions do Cortex-M0+; confirma a ausencia de RBIT.
+
+[3] Bauer, Jens. "Arm Cortex-M0 assembly programming tips and tricks."
+    ARM Community Blog, 22 agosto 2016.
+    https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/arm-cortex-m0-assembly-programming-tips-and-tricks
+    Documenta o uso de LSRS+ADCS para manipulación de bits sen ramas.
+
+[4] Yiu, Joseph. The Definitive Guide to ARM Cortex-M0 and Cortex-M0+
+    Processors, 2nd ed. Newnes/Elsevier, 2015. ISBN 978-0-12-803277-0.
+    https://shop.elsevier.com/books/the-definitive-guide-to-arm-cortex-m0-and-cortex-m0-processors/yiu/978-0-12-803277-0
+    Referencia completa do Cortex-M0+; diferenzas ARMv6-M vs ARMv7-M.
+
+[5] ARM-software. "Using RBIT Instruction for bit reversal memory
+    reordering." CMSIS_5 Issue #1278, GitHub, 2021.
+    https://github.com/ARM-software/CMSIS_5/issues/1278
+    Os mantedores de CMSIS confirman que RBIT non está dispoñible en
+    M0, M0+ nin M23.
