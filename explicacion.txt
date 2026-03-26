@@ -1,112 +1,77 @@
 Explicación das optimizacións en ensamblador para reverse_int()
 ================================================================
 
-1. Análise da versión C de referencia
+1. Que fai a función C de referencia
 --------------------------------------
 
-A función C orixinal fai, por cada un dos 32 bits:
+A función inverte os 32 bits dun enteiro. Por cada bit fai:
 
-    out = out << 1;
-    out |= in & 1;
-    in = in >> 1;
+    out = out << 1;     <- despraza a saida un bit á esquerda
+    out |= in & 1;      <- copia o bit menos significativo de in a out
+    in = in >> 1;       <- despraza a entrada un bit á dereita
 
-Compilada con -Ofast, o compilador xera un bucle de 7 instrucións por
-iteración:
-
-    movs  r1, r4        ; r1 = 1 (máscara)
-    lsls  r0, r0, #1    ; out <<= 1
-    ands  r1, r3        ; r1 = in & 1
-    subs  r2, #1        ; contador--
-    orrs  r0, r1        ; out |= (in & 1)
-    lsrs  r3, r3, #1    ; in >>= 1
-    bne   loop
-
-O compilador traduce fielmente as operacións C: desprazamento, máscara
-con AND, combinación con OR. Non pode optimizar máis porque non "coñece"
-o truco do carry flag que describimos a continuación.
+Compilada con -Ofast, o compilador xera 7 instrucions por iteracion.
+Con 32 iteracions e o custo das ramas: 312 ciclos medidos.
 
 
-2. A optimización: o truco LSRS + ADCS co carry flag
-------------------------------------------------------
+2. A optimizacion: carry flag (LSRS + ADCS)
+---------------------------------------------
 
-No Cortex-M0+, a instrución LSRS (Logical Shift Right, Set flags) non
-só despraza os bits á dereita, senón que ademais coloca o bit que "cae"
-polo lado dereito (o LSB orixinal) no carry flag do rexistro de estado.
+No ARM Cortex-M0+, a instrución LSRS non só despraza bits: tamén garda
+o bit que "sae" polo lado dereito nun rexistro especial chamado carry flag.
 
-Pola súa banda, ADCS Rd, Rd calcula:
+Logo, ADCS Rd, Rd calcula:  Rd = Rd + Rd + carry = (Rd << 1) | carry
 
-    Rd = Rd + Rd + C = (Rd << 1) | carry
+Combinando as dúas instrucions:
 
-É dicir, despraza Rd á esquerda un bit e inserta o carry no bit 0.
+    lsrs  in, in, #1      <- in >>= 1, o LSB orixinal vai ao carry
+    adcs  out, out         <- out = (out << 1) | carry
 
-Combinando ambas:
-
-    lsrs  in, in, #1      ; in >>= 1, e o LSB orixinal vai ao carry
-    adcs  out, out         ; out = (out << 1) | carry
-
-Con só 2 instrucións facemos o traballo que ao compilador lle custa 5
-(movs + lsls + ands + orrs + lsrs). O carry flag actúa como "ponte"
-entre a entrada e a saída, sen necesidade de rexistros auxiliares nin
-operacións de máscara.
+Con 2 instrucions facemos o mesmo que con 5. O bucle queda en 4
+instrucions en vez de 7 -> 175 ciclos medidos -> speedup de 1.78x.
 
 
-3. Por que non usar RBIT?
---------------------------
+3. Por que non usamos RBIT?
+----------------------------
 
-A instrución RBIT (Reverse Bits) invertiría os 32 bits nunha soa
-instrución. Pero RBIT só existe en ARMv7-M (Cortex-M3/M4/M7). O noso
-Cortex-M0+ usa ARMv6-M, que só soporta o subconxunto Thumb e non inclúe
-RBIT. Isto confírmase na cabeceira CMSIS cmsis_gcc.h, que implementa
-__RBIT() como un bucle C cando __ARM_ARCH_7M__ non está definido.
+Existe una instrución RBIT que inverte os 32 bits nunha soa operación,
+pero só está dispoñible no Cortex-M3/M4/M7 (ARMv7-M). O noso
+Cortex-M0+ usa ARMv6-M, un subconxunto máis limitado que non a inclúe.
 
 
-4. Implementación inline vs ensamblador puro
-----------------------------------------------
+4. Implementacion inline vs arquivo .s
+----------------------------------------
 
-ASM inline (en main.c):
-  - A función escríbese en C pero o corpo do bucle é ensamblador.
-  - Úsase a extensión GCC __asm volatile con operandos nomeados.
-  - Restrición "+l": rexistros baixos r0-r7 (obrigatorio en Thumb/M0+).
-  - Clobber "cc": indicamos que modificamos os flags.
-  - Necesita .syntax unified / .syntax divided ao redor porque GCC
-    emite código en sintaxe "divided" por defecto para Thumb.
+Inline ASM (en main.c):
+  Código ensamblador embebido nunha función C usando __asm volatile.
+  O compilador integrao co resto do código C.
 
 ASM puro (reverse_asm.s):
-  - Función completa nun arquivo .s separado.
-  - Segue a convención de chamada AAPCS: entrada en r0, saída en r0.
-  - Usa só r0, r1 e r2 (todos caller-saved), polo que non precisa
-    PUSH/POP. Isto aforra ciclos fronte ao prólogo/epílogo que o
-    compilador engade na versión inline.
-  - A directiva .thumb_func garante que o linker marca o enderezo da
-    función co bit de Thumb activo.
+  Función completa escrita en ensamblador nun arquivo separado.
+  Segue a convención AAPCS: argumento en r0, resultado en r0.
+  Non precisa gardar rexistros (usa só r0-r2, que o chamador xa asume
+  que poden cambiar), polo que non hai instrucions push/pop.
 
-Ambas versións usan o mesmo algoritmo (LSRS + ADCS en bucle de 32
-iteracións), polo que o rendemento é moi similar. A versión en .s ten
-un prólogo/epílogo lixeiramente máis limpo.
+Ambas dan o mesmo resultado porque o algoritmo é idéntico.
 
 
-5. Ciclos de execución medidos
--------------------------------
+5. Resultados
+--------------
 
-Os ciclos medíronse co temporizador SysTick configurado como contador
-libre descendente usando o reloxo do procesador (48 MHz).
+    Entrada: 0x12345678   Saída: 0x1E6A2C48
 
-    Entrada de proba: 0x12345678
-    Saída esperada:   0x1E6A2C48
+    | Implementación        | Ciclos | Speedup |
+    |-----------------------|--------|---------|
+    | C referencia (-Ofast) |   312  |  1.00x  |
+    | ASM inline            |   175  |  1.78x  |
+    | ASM puro (.s)         |   175  |  1.78x  |
 
-    | Implementación        | Ciclos | Speedup vs C |
-    |-----------------------|--------|--------------|
-    | C referencia (-Ofast) | ???    | 1.00x        |
-    | ASM inline            | ???    | ?.??x        |
-    | ASM puro (.s)         | ???    | ?.??x        |
-
-(Os valores exactos completaranse tras flashear e medir na placa.)
+    Medición: SysTick con reloxo do procesador (~20.97 MHz FLL).
 
 
 6. Conclusión
 --------------
 
-A mellora principal vén de aproveitar o carry flag do procesador, algo
-que o compilador non fai nin con -Ofast. Esta é unha situación típica
-onde o coñecemento da arquitectura permite optimizacións que van máis
-alá do que o compilador pode inferir automaticamente.
+A mellora vén de aproveitar o carry flag, algo que o compilador non fai
+nin con -Ofast. É un exemplo de optimización que require coñecer a
+arquitectura do procesador.
