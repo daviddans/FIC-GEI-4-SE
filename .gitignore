@@ -35,3 +35,6 @@
 
 frdm-kl46z-sdk/
 
+#Misc
+.vs/
+.claude/
