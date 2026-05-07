@@ -21,10 +21,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* Tamaño do buffer. Ten en conta o límite de 16 bit do TPM:
- *   -O0    ≈ 321 ciclos/byte → BUF ≤ ~200 para non desbordar
- *   -Ofast ≈  12 ciclos/byte
- *   ASM    ≈  10 ciclos/byte                                          */
+/* Tamaño do buffer.*/
 #define CRC8_BUF_LEN 128u
 
 extern uint8_t crc8_O0   (const uint8_t*, size_t);

@@ -84,13 +84,13 @@ Algoritmo   : CRC-8/CCITT (POLY=0x07, INIT=0x00)
 Datos       : buf[i] = i, len = 128 B
 Temporizador: TPM0 @ MCGFLLCLK, presc 1 (1 tick = 1 ciclo CPU)
 Medición    : single-shot
-CRC esperado: 0xXX
+CRC esperado: 0xED
 
 Resultados (mais rapido primeiro):
   Versión    CRC    OK    ciclos     speedup vs peor
-  ASM        0xXX   [v]    ~1300       ~6.3x
-  C -Ofast   0xXX   [v]    ~1500       ~5.5x
-  C -O0      0xXX   [v]    ~8200       1.00x (peor)
+  ASM        0xED   [v]    7320       5.62x
+  C -Ofast   0xED   [v]    7446       5.52x
+  C -O0      0xED   [v]    41140       1.00x (peor)
 ==================================================
 ```
 
@@ -100,21 +100,13 @@ Recursos consultados durante o desenvolvemento:
 
 - **NXP/Freescale**, *KL46 Sub-Family Reference Manual* (`KL46P121M48SF4RM.pdf`,
   Rev. 3, 2013) — secciones **3.8 (Timer modules configuration)**,
-  **5.7 (Clock distribution: PIT, TPM, LPTMR clocking)** e capítulos individuais
-  para os layouts dos rexistros do PIT e UART0.
-- **ARM Limited**, *ARMv6-M Architecture Reference Manual* (DDI 0419E) —
-  comportamento exacto de `LSLS`/`BCC`/`EORS` e a especificación do carry flag.
-  <https://developer.arm.com/documentation/ddi0419/latest/>
-- **ARM Limited**, *Cortex-M0+ Devices Generic User Guide* (DUI 0662) —
-  confirmación do conxunto de instrucións dispoñibles na variante M0+
-  (ausencia de `RBIT`, `CLZ`, `UBFX`, `BFI`).
-  <https://developer.arm.com/documentation/dui0662/latest/>
-- **Bauer, Jens**, *"Arm Cortex-M0 assembly programming tips and tricks"*,
-  ARM Community Blog (22 agosto 2016) — documenta o uso do carry flag con
-  `LSLS`+`ADCS`/`SBCS` como técnica branchless.
-- **Yiu, Joseph**, *The Definitive Guide to ARM Cortex-M0 and Cortex-M0+
-  Processors*, 2ª ed., Newnes/Elsevier (2015), ISBN 978-0-12-803277-0 —
-  diferenzas ARMv6-M vs ARMv7-M e detalle do pipeline para estimación de ciclos.
-- **CMSIS** (`MKL46Z4.h`, `core_cm0plus.h`) — definicións de rexistros e
-  bit-fields (`PIT_TCTRL_TEN_MASK`, `SIM_SCGC6_PIT_MASK`, `SIM_SOPT2_TPMSRC`, …)
-  utilizadas no código.
+  **5.7 (Clock distribution:  TPM, LPTMR clocking)** e capítulos individuais
+  para os layouts dos rexistros do TPM e UART0.
+
+- **Implementacion del algoritmo crc** https://gist.github.com/David256/f10105e43b45ef8ac292d6f5a11f0ca2
+
+- **ARM Limited**, *Application Note AN179: CRC computation using ARM cores*
+  (ARM DAI 0179B) — describe a técnica de manter o CRC no byte alto dun
+  rexistro de 32 bits para que `LSL #1` deposite o MSB directamente no carry
+  flag, reducindo o bucle interno a 5 instrucións; é a base da optimización
+  implementada en `crc8_asm.s`.
