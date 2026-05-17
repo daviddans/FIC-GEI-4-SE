@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Bare-metal embedded C project targeting the **NXP FRDM-KL46Z** development board (ARM Cortex-M0+ / MKL46Z256). University course (SE — Sistemas Electrónicos, FIC GEI 4th year). Each practicum / trabajo lives on its own branch (`Practica_1`, `practica_2`, `practica_3`, `practica_4`, `trabajo_tutelado_1`, …).
 
-Current branch: **`trabajo_tutelado_1`** — was used for the *reverse_int* benchmark and is now the starting point for **`trabajo_tutelado_2`** (CRC8 — see `.claude/trabajo_tutelado_2_crc8.md`).
+Current branch: **`trabajo_tutelado_2`** — PWM + sensor de luz. Lee ADC0_SE3 (PTE22) y controla LED verde (PTD5/TPM0_CH5) y LED rojo (PTE29/TPM0_CH2) con PWM low-true. Ver `.claude/trabajo_tutelado_2_pwm_led.md` para diseño detallado.
 
 ## Build & Flash Commands
 
